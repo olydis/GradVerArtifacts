@@ -1584,9 +1584,59 @@ Proof.
   split; apply fe.
 Qed.
 
+
+Lemma SatisfiableAdditionalEqualityHelper2 : forall rho e v, EvalExpr rho e v -> forall x, FreeVarExpr x e -> exists v, EvalVar rho x v.
+Proof.
+  induction e; intro; intro ef; intro; intro fvf.
+  - inv fvf.
+  - inv ef. inv fvf. eex.
+  - inv ef. inv fvf. inv H1.
+    * eapply IHe1; eauto.
+    * eapply IHe2; eauto.
+Qed.
+
+Lemma SatisfiableAdditionalEqualityHelper : forall rho phi, EvalFormula rho phi -> forall x, FreeVarForm x phi -> exists v, EvalVar rho x v.
+Proof.
+  induction phi; intro ef; intro; intro fvf.
+  - inv fvf.
+  - inv ef. inv fvf.
+    inv H1.
+    * eapply SatisfiableAdditionalEqualityHelper2 in H3; eauto.
+    * eapply SatisfiableAdditionalEqualityHelper2 in H4; eauto.
+  - inv ef. inv fvf.
+    inv H1.
+    * eapply IHphi1; eauto.
+    * eapply IHphi2; eauto.
+Qed.
+
 Lemma SatisfiableAdditionalEquality : forall phi, Satisfiable phi -> forall x, Satisfiable (FormAnd phi (FormCompOp CompOpEq (ExprVar x) (ExprVar x))).
 Proof.
-Admitted.
+  intro. intro sat. intro.
+  inv sat.
+  clac (exists v, EvalVar x0 x v).
+  - unf.
+    exists x0.
+    ctor.
+    * eauto.
+    * ctor; try (ctor; eauto).
+      unfold CompOpEq.
+      apply Zbool.Zeq_is_eq_bool.
+      auto.
+  - exists (VarEnvMapping x Z0 x0).
+    ctor. Focus 2. ctor; try (ctor; ctor; eauto).
+    assert (fv := FreeVarFormList phi). unf.
+    assert (~ In x x1) as not_in_it.
+      intro c. apply H1 in c. eapply SatisfiableAdditionalEqualityHelper in c; eauto.
+    eapply (ObservablyIdenticalVarEnvEvalFormula x1); eauto.
+    * intro. intro inn. intro.
+      split; intro ev.
+      + inv ev.
+        --apply not_in_it in inn. inv inn.
+        --assumption.
+      +ctor; auto.
+       intro c. subst. apply not_in_it in inn. inv inn.
+    * intro. intro fvf. apply H1. assumption.
+Qed.
 
 Lemma XMonotoneGCallMaxImplies1 : forall x phi1' phi2', XMonotoneGFunction1 (fun phi => GCallMaxImplies x phi phi1' phi2').
 Proof.
@@ -2090,11 +2140,51 @@ Proof.
     ctor; eauto.
 Qed.
 
+Lemma diffWeakens : forall p1 p2 p3, diff p1 p2 p3 -> Implies p2 p3.
+Proof.
+  intro. intro. intro. intro gd. apply diffValid in gd.
+  unf. assumption.
+Qed.
+
+Lemma gdiffWeakens : forall p1 p2 p3, gdiff p1 p2 p3 -> forall rho, EvalGFormula rho p2 -> EvalGFormula rho p3.
+Proof.
+  intro. intro. intro. intro gd. intro. intro ef.
+  inv gd. unf. inv H1.
+  - inv ef. unf. inv H2. ctor. split; eauto.
+    eapply diffWeakens; eauto.
+  - inv ef. unf. inv H3. ctor. split; eauto.
+    eapply diffWeakens; eauto.
+  - inv ef. unf. inv H3.
+    assert (tot := StaticTotal p3). unf.
+    ctor. split; eauto.
+    eapply GFormEqualSameStatic in H2; eauto. apply H2.
+    eapply diffWeakens; eauto.
+Qed.
+
+Lemma diffConjunction : forall p1 p2 p3, diff p1 p2 p3 -> Implies (FormAnd p1 p3) p2.
+Proof.
+  intro. intro. intro. intro gd. apply diffValid in gd.
+  unf. assumption.
+Qed.
+
+Lemma gdiffConjunction : forall p1 p2 p3, gdiff p1 p2 p3 -> forall rho, EvalGFormula rho p1 -> EvalGFormula rho p3 -> EvalGFormula rho p2.
+Proof.
+  intro. intro. intro. intro gd. intro. intro ef1. intro ef2.
+  inv gd. unf. inv H1.
+  - inv ef1. inv ef2. unf. inv H3. eapply StaticDet in H0; eauto. subst. ctor. split; eauto.
+    eapply diffConjunction; eauto.
+  - inv ef1. inv ef2. unf. inv H4. eapply StaticDet in H0; eauto. subst. ctor. split; eauto.
+    eapply diffConjunction; eauto.
+  - inv ef1. inv ef2. unf. eapply StaticDet in H0; eauto. subst. ctor. split; eauto.
+    eapply GFormEqualSameStatic in H2; eauto. apply H2 in H5.
+    eapply diffConjunction; eauto.
+Qed.
+
 (* GSP: can be approximation. the worse, the more runtime checks *)
 Definition DefGSPCall (gspc : Set_Var -> Set_MethodName -> Set_Var -> Set_GFormula -> Set_GFormula -> Prop) : Prop :=
   forall y m x pa pb, GWP (StmtCall y m x) pb pa -> exists pb, gspc y m x pa pb.
 Definition ValidGSPCall (gspc : Set_Var -> Set_MethodName -> Set_Var -> Set_GFormula -> Set_GFormula -> Prop) : Prop :=
-  forall y m x pa pb, gspc y m x pa pb -> (forall pa', GWP (StmtCall y m x) pb pa' -> GImplies pa pa') /\ (forall pb', GWP (StmtCall y m x) pb' pa -> GImplies pb' pb).
+  forall y m x pa pb, gspc y m x pa pb -> (forall pa', GWP (StmtCall y m x) pb pa' -> GImplies pa pa') /\ (forall pb', GWP (StmtCall y m x) pb' pa -> MoreImpliesThan pb' pb).
 Definition MonotoneGSPCall (gspc : Set_Var -> Set_MethodName -> Set_Var -> Set_GFormula -> Set_GFormula -> Prop) : Prop :=
   forall y m x, MonotoneGFunction1 (gspc y m x).
 
@@ -2123,8 +2213,12 @@ Proof.
     (* monotone/deteministic *)
     admit.
   - unf. intros.
-    (* monotone/deteministic *)
-    admit.
+    reduce.
+    destruct gp.
+    * ctor. ctor.
+      intro. intros. ctor.
+    * ctor. eauto. eauto. ctor.
+      intro. intros. ctor.
   - intro. intro. intro. intro. intro. intro mpt. intro. intros.
     unf.
     eexists. repeat split.
@@ -2479,7 +2573,7 @@ Proof.
     eapply GFormEqualSameStatic in H0; eauto.
     exists phi1. exists x. exists phi2.
     repeat split; auto; apply H0.
-Qed.
+Qed.ObservablyIdenticalVarEnvEvalFormula
 
 Lemma GProgress : ∀ (pi : Set_State),
   ValidGState pi ->
@@ -2642,7 +2736,32 @@ Proposition GPreservation : ∀ (pi pi' : Set_State),
 Proof.
   intro. intro. intro step. intro valid.
   inv step; subst.
-  - induction H1.
+  - generalize s' rho' s rho valid H1. clear. induction s'; intro; intro; intro; intro; intro step; inv step.
+    * apply RecStack1 in H4. intuition.
+    * symmetry in H3. apply RecStack1 in H3. intuition.
+    * apply ValidGStateClassicnessRev.
+      apply ValidGStateClassicness in valid. inv valid. unf. inv H1.
+      destruct x1. inv H3.
+      rewrite StackWPTopSkip in H; eauto. unf.
+      inv H. inv H3.
+      eex. ctor. eauto.
+      ctor; auto.
+      apply PrimitiveLiftStatic in H6. unf.
+      apply PrimitiveLiftStatic in H10. unf. inv H7. unf. eapply StaticDet in H4; eauto. eapply StaticDet in H; eauto. subst. apply H10 in H13. inv H13.
+      eex. apply H3 in H15.
+      eapply SubstFormSemantics; eauto.
+    * apply RecStack1 in H4. intuition.
+    * apply RecStack1 in H4. intuition.
+    * apply ValidGStateClassicnessRev.
+      apply ValidGStateClassicness in valid. inv valid. unf. inv H1.
+      destruct x1. inv H3.
+      rewrite StackWPTopSkip in H; eauto. unf.
+      inv H. inv H3.
+      eex. ctor. eauto.
+      ctor; auto.
+      apply PrimitiveLiftStatic in H4. unf. inv H6. unf. eapply StaticDet in H; eauto. subst. apply H3 in H6. inv H6.
+      eex.
+    * apply RecStack1 in H4. intuition.
     * apply ValidGStateClassicnessRev.
       apply ValidGStateClassicness in valid. inv valid. unf. inv H0.
       destruct x1. inv H2.
@@ -2650,31 +2769,10 @@ Proof.
       inv H.
       eex.
       ctor. assumption.
-    * apply ValidGStateClassicnessRev.
-      apply ValidGStateClassicness in valid. inv valid. unf. inv H1.
-      destruct x1. inv H3.
-      rewrite StackWPTopSkip in H0; eauto. unf.
-      inv H0. inv H3.
-      eex. ctor. eauto.
-      ctor; auto.
-      apply PrimitiveLiftStatic in H4. unf. inv H6. unf. eapply StaticDet in H0; eauto. subst. apply H3 in H6. inv H6.
-      eex.
-    * apply ValidGStateClassicnessRev.
-      apply ValidGStateClassicness in valid. inv valid. unf. inv H1.
-      destruct x2. inv H3.
-      rewrite StackWPTopSkip in H0; eauto. unf.
-      inv H0. inv H3.
-      eex. ctor. eauto.
-      ctor; auto.
-      apply PrimitiveLiftStatic in H6. unf.
-      apply PrimitiveLiftStatic in H10. unf. inv H7. unf. eapply StaticDet in H4; eauto. eapply StaticDet in H0; eauto. subst. apply H10 in H13. inv H13.
-      eex. apply H3 in H15.
-      eapply SubstFormSemantics; eauto.
-    * admit. (* irrelevant (inherited from Semantics.Step) *)
-    * admit. (* irrelevant (inherited from Semantics.Step) *)
-    * admit. (* irrelevant (inherited from Semantics.Step) *)
+    * apply RecStack1 in H4. intuition.
+    * admit. (* inductively *)
   - ctor; eauto.
-    * admit.
+    * eapply gdiffConjunction in H1; eauto.
     * eapply ConsStmtFirst. eauto.
     * ctor.
   - inv valid. inv H14.
@@ -2692,23 +2790,9 @@ Proof.
     assert (gg'' = s). admit. (* GWP deterministic *)
     subst.
 
-    inv H4. unf.
-    apply PrimitiveLiftStatic in H9. unf.
-    eex.
-
-    apply diffValid in H14.
-    apply H14. unf.
-
-    clear ggs H1 H2 Sr H22 H23 H17.
-
-    ctor.
-    * assert (gwp := H). apply GSPCallValid in H3. unf. apply H2 in H.
-      admit. (* by def (same as non-gradual...) *)
-    * apply H12.
-      inv H5. unf.
-      eapply StaticDet in H0; eauto.
-      subst.
-      assumption.
+    eapply gdiffConjunction; eauto.
+    apply GSPCallValid in H3. unf. apply H9 in H.
+    admit. (* by def (same as non-gradual...) *)
 Admitted.
 
 End GSemantics.
@@ -2811,27 +2895,6 @@ Proof.
   - ctor.
     * apply IHs2. eauto.
     * apply IHs1. auto.
-Qed.
-
-Lemma diffWeakens : forall p1 p2 p3, diff p1 p2 p3 -> Implies p2 p3.
-Proof.
-  intro. intro. intro. intro gd. apply diffValid in gd.
-  unf. assumption.
-Qed.
-
-Lemma gdiffWeakens : forall p1 p2 p3, gdiff p1 p2 p3 -> forall rho, EvalGFormula rho p2 -> EvalGFormula rho p3.
-Proof.
-  intro. intro. intro. intro gd. intro. intro ef.
-  inv gd. unf. inv H1.
-  - inv ef. unf. inv H2. ctor. split; eauto.
-    eapply diffWeakens; eauto.
-  - inv ef. unf. inv H3. ctor. split; eauto.
-    eapply diffWeakens; eauto.
-  - inv ef. unf. inv H3.
-    assert (tot := StaticTotal p3). unf.
-    ctor. split; eauto.
-    eapply GFormEqualSameStatic in H2; eauto. apply H2.
-    eapply diffWeakens; eauto.
 Qed.
 
 Theorem GStepCoincidesWithStep : forall p p', ValidProgram p p -> ConvertProgram p p' -> forall s1 s2, Step p s1 s2 -> GStep p' s1 (Some s2).
