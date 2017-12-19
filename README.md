@@ -1,4 +1,8 @@
-# Gradual Verification Artifacts
+# Gradual Program Verification Artifacts
+
+## `paper`
+
+Latest version of paper "Gradual Program Verification" (VMCAI 2018).
 
 ## `proofs-svl-gvl`
 
